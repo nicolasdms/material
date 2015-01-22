@@ -1,0 +1,93 @@
+$select-option-height: 48px;
+$select-option-padding: 16px;
+$select-container-padding: 16px;
+$select-container-transition-duration: 350ms;
+
+$select-max-visible-options: 5;
+
+.md-select-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 99;
+
+  opacity: 0;
+  transform: translate3d(0,0,0);
+
+  // enter: md-select fades in, then options follow
+  &.md-enter {
+    opacity: 1;
+
+    md-select {
+      transition: transform $swift-ease-out;
+      transition-duration: 400ms;
+      background: white;
+    }
+    md-option {
+      opacity: 1;
+      transition: $swift-ease-in;
+      transition-duration: 250ms;
+      transition-delay: 150ms;
+    }
+  }
+
+  // leave: the container fades out and moves up a tiny bit.
+  &.md-leave {
+    opacity: 0;
+    transform: translate3d(0,-6px,0);
+    transition: $swift-ease-in;
+    transition-duration: 250ms;
+
+    md-select {
+      background: white;
+    }
+    md-option {
+      opacity: 1;
+    }
+  }
+}
+
+md-select {
+  @extend md-content;
+  box-shadow: $whiteframe-shadow-z1;
+
+  // No top/bottom padding when overflowing
+  &:not(.md-overflow) {
+    padding: $select-container-padding 0 $select-container-padding 0;
+  }
+
+  min-width: 136px;
+
+  transform-origin: 0 0;
+  transform: scale(1.0);
+  opacity: 1;
+
+  max-height: $select-option-height * $select-max-visible-options;
+
+  background: transparent;
+}
+
+md-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: auto;
+
+  .md-text {
+    width: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  padding: 0 $select-option-padding 0 $select-option-padding;
+  height: $select-option-height;
+
+  opacity: 0;
+
+  &[selected] {
+    background: #f0f0f0;
+  }
+}
+
+@keyframes optionFadeIn {
+}

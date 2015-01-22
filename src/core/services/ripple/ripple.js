@@ -100,9 +100,12 @@ function InkRippleService($window, $timeout) {
     }
 
     // Publish self-detach method if desired...
-    return function detach() {
-      hammertime.destroy();
-      rippleContainer && rippleContainer.remove();
+    return {
+      detach: function detach() {
+        hammertime.destroy();
+        rippleContainer && rippleContainer.remove();
+      },
+      create: createRipple
     };
 
     function parseColor(color) {
