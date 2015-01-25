@@ -1,8 +1,9 @@
 (function() {
 'use strict';
+
 var SELECT_EDGE_MARGIN = 8;
-var SELECT_NEXT_ID = 0;
-var SELECT_OPTION_HEIGHT = 64;
+var SELECT_PADDING = 8;
+var selectNextId = 0;
 
 /*
 <md-select ng-model="choice" ng-model-options="{ trackBy: 'choice.id' }">
@@ -23,25 +24,62 @@ var SELECT_OPTION_HEIGHT = 64;
 // TODO fix positioning when not scrollable
 
 angular.module('material.components.select', [
-  'material.core'
+  'material.core',
+  'material.components.backdrop'
 ])
-
 .directive('mdSelect', SelectDirective)
+.directive('mdSelectMenu', SelectMenuDirective)
 .directive('mdLabel', LabelDirective)
 .directive('mdOption', OptionDirective)
 .directive('mdOptgroup', OptgroupDirective)
 .provider('$mdSelect', SelectProvider);
 
-function SelectDirective($parse, $timeout) {
+function SelectDirective($mdSelect) {
+  return {
+    restrict: 'E',
+    compile: compile
+  };
+
+  function compile(element, attr) {
+    var label = element.find('md-label').remove();
+    var html = '<md-select-menu ng-model="' + attr.ngModel + '">' + element.html() + '</md-select-menu>';
+    element.empty();
+
+    var button = angular.element('<button class="md-button" md-select-button>').append(label);
+    var menu = angular.element('<ul role="menu">');
+
+    element.append(button);
+    element.append(menu);
+
+    return function postLink(scope, element, attr) {
+      element.on('click', function() {
+        scope.$apply(function() {
+          $mdSelect.show({
+            template: html,
+            scope: scope,
+            target: button[0]
+          });
+        });
+      });
+    };
+
+  }
+}
+
+function SelectMenuDirective($parse, $timeout) {
 
   return {
     restrict: 'E',
-    require: ['mdSelect', 'ngModel'],
-    controller: SelectController,
-    link: { pre: postLink }
+    require: ['mdSelectMenu', 'ngModel'],
+    controller: SelectMenuController,
+    link: { 
+      pre: preLink
+    }
   };
 
-  function postLink(scope, element, attr, ctrls) {
+  // We use preLink instead of postLink to ensure that selectCtrl.init()
+  // is called before the child md-options run their postLink.
+  function preLink(scope, element, attr, ctrls) {
     var selectCtrl = ctrls[0];
     var ngModel = ctrls[1];
     var selectNode = element[0];
@@ -51,31 +89,24 @@ function SelectDirective($parse, $timeout) {
     selectCtrl.init(ngModel);
 
     function checkOverflow() {
-      var isOverflow = selectNode.scrollHeight > selectNode.offsetHeight;
-      if (isOverflow) {
+      var isScrollable = selectNode.scrollHeight > selectNode.offsetHeight;
+      if (isScrollable) {
         element.addClass('md-overflow');
       }
     }
     
     function clickListener(ev) {
-      // If the click's target was a child of an md-option, then get the md-option parent of 
-      // the click.
-      var option;
-      var currentNode = ev.target;
-      while (currentNode && currentNode !== selectNode) {
-        if (currentNode.$mdOption) {
-          option = currentNode;
-          break;
-        }
-        currentNode = currentNode.parentNode;
-      }
-      if (!option) return;
+      // Get the md-option parent of the click's target, if it exists
+      var option = filterParent(ev.target, function(node) { 
+        return (node.tagName || '').indexOf('MD-OPTION') !== -1; 
+      });
+      var optionCtrl = option && angular.element(option).controller('mdOption');
+      if (!option || !optionCtrl) return;
+
+      var optionHashKey = selectCtrl.hashGetter(optionCtrl.value);
+      var isSelected = angular.isDefined(selectCtrl.selected[optionHashKey]);
 
       scope.$apply(function() {
-        var optionCtrl = angular.element(option).controller('mdOption');
-        var optionHashKey = selectCtrl.hashGetter(optionCtrl.value);
-        var isSelected = selectCtrl.isSelected(optionHashKey);
-
         if (selectCtrl.isMultiple) {
           if (isSelected) {
             selectCtrl.deselect(optionHashKey);
@@ -93,7 +124,7 @@ function SelectDirective($parse, $timeout) {
     }
   }
 
-  function SelectController($scope, $element, $attrs) {
+  function SelectMenuController($scope, $element, $attrs) {
     var self = this;
     self.options = {};
     self.selected = {};
@@ -101,30 +132,29 @@ function SelectDirective($parse, $timeout) {
 
     self.init = function(ngModel) {
       var ngModelExpr = $attrs.ngModel;
+      self.ngModel = ngModel;
 
       if (ngModel.$options && ngModel.$options.trackBy) {
         var trackByLocals = {};
         var trackByParsed = $parse(ngModel.$options.trackBy);
-        self.hashGetter = function(value, parseScope) {
-          trackByLocals.$model = value;
-          return trackByParsed(parseScope || $scope, trackByLocals);
+        self.hashGetter = function(value, valueScope) {
+          trackByLocals.$value = value;
+          return trackByParsed(valueScope || $scope, trackByLocals);
         };
       } else {
         self.hashGetter = function getHashValue(value) {
           if (angular.isObject(value)) {
-            return value.$$mdSelectId || (value.$$mdSelectId = ++SELECT_NEXT_ID);
+            return value.$$mdSelectId || (value.$$mdSelectId = ++selectNextId);
           }
           return value;
         };
       }
-
-
-      self.ngModel = ngModel;
-
       if (self.isMultiple) {
         ngModel.$validators['md-multiple'] = validateArray;
         ngModel.$render = renderMultiple;
 
+        // By default ngModel only watches a change in reference, but this allows the
+        // developer to also push and pop from their array.
         $scope.$watchCollection(ngModelExpr, function(value) {
           if (validateArray(value)) renderMultiple(value);
         });
@@ -133,26 +163,18 @@ function SelectDirective($parse, $timeout) {
       }
 
       function validateArray(modelValue, viewValue) {
-        var value = modelValue || viewValue;
-        return !value ? true : angular.isArray(value);
+        return angular.isArray(modelValue || viewValue || []);
       }
     };
 
-    self.isSelected = function(hashKey) {
-      return angular.isDefined(self.selected[hashKey]);
-    };
     self.select = function(hashKey, hashedValue) {
       var option = self.options[hashKey];
-      if (option) {
-        option.setSelected(true);
-      }
+      option && option.setSelected(true);
       self.selected[hashKey] = hashedValue;
     };
     self.deselect = function(hashKey) {
       var option = self.options[hashKey];
-      if (option) {
-        option.setSelected(false);
-      }
+      option && option.setSelected(false);
       delete self.selected[hashKey];
     };
 
@@ -161,7 +183,7 @@ function SelectDirective($parse, $timeout) {
         throw new Error('Duplicate!');
       }
       self.options[hashKey] = optionCtrl;
-      if (self.isSelected(hashKey)) {
+      if (angular.isDefined(self.selected[hashKey])) {
         self.select(hashKey, optionCtrl.value);
         self.refreshViewValue();
       }
@@ -174,15 +196,15 @@ function SelectDirective($parse, $timeout) {
       var values = [];
       var option;
       for (var hashKey in self.selected) {
-         // If this hashKey in the model has an associated option, push
-         // that option's value
+         // If this hashKey has an associated option, push that option's value to the model.
          if ((option = self.options[hashKey])) {
            values.push(option.value);
          } else {
-           // Otherwise, the given hashKey in the model has no associated option.
-           // Get the un-hashed version of the hashKey.
-           // This allows the user to put a value in the model that doesn't yet have
-           // an associated option.
+           // Otherwise, the given hashKey has no associated option, and we got it
+           // from an ngModel value at an earlier time. Push the unhashed value of 
+           // this hashKey to the model.
+           // This allows the developer to put a value in the model that doesn't yet have
+           // an associated option. 
            values.push(self.selected[hashKey]);
          }
       }
@@ -190,18 +212,18 @@ function SelectDirective($parse, $timeout) {
     };
 
     function renderMultiple() {
-      var newSelected = self.ngModel.$modelValue || self.ngModel.$viewValue || [];
+      var newSelectedValues = self.ngModel.$modelValue || self.ngModel.$viewValue || [];
       if (!angular.isArray(newSelected)) return;
 
       var oldSelected = Object.keys(self.selected);
 
-      var newSelectedHashed = newSelected.map(self.hashGetter);
+      var newSelectedHashes = newSelected.map(self.hashGetter);
       var deselected = oldSelected.filter(function(hash) {
-        return newSelectedHashed.indexOf(hash) === -1;
+        return newSelectedHashes.indexOf(hash) === -1;
       });
       deselected.forEach(self.deselect);
-      newSelectedHashed.forEach(function(hashKey, i) {
-        self.select(hashKey, newSelected[i]);
+      newSelectedHashes.forEach(function(hashKey, i) {
+        self.select(hashKey, newSelectedValues[i]);
       });
     }
     function renderSingular() {
@@ -214,13 +236,16 @@ function SelectDirective($parse, $timeout) {
 }
 
 function LabelDirective() {
+  return {
+    restrict: 'E'
+  };
 }
 
 function OptionDirective($mdInkRipple) {
 
   return {
     restrict: 'E',
-    require: ['mdOption', '^mdSelect'],
+    require: ['mdOption', '^^mdSelectMenu'],
     template: '<div class="md-text" ng-transclude></div>',
     transclude: true,
     controller: OptionController,
@@ -230,9 +255,6 @@ function OptionDirective($mdInkRipple) {
   function postLink(scope, element, attr, ctrls) {
     var optionCtrl = ctrls[0];
     var selectCtrl = ctrls[1];
-    var node = element[0];
-
-    node.$mdOption = true;
 
     if (angular.isDefined(attr.ngValue)) {
       scope.$watch(attr.ngValue, changeOptionValue);
@@ -242,33 +264,31 @@ function OptionDirective($mdInkRipple) {
       throw new Error("Expected either ngValue or value attr");
     }
 
+    $mdInkRipple.attachButtonBehavior(scope, element);
 
-    var latestHashKey;
     function changeOptionValue(newValue, oldValue) {
       var oldHashKey = selectCtrl.hashGetter(oldValue, scope);
       var newHashKey = selectCtrl.hashGetter(newValue, scope);
 
+      optionCtrl.hashKey = newHashKey;
       optionCtrl.value = newValue;
-      latestHashKey = newHashKey;
 
       selectCtrl.removeOption(oldHashKey, optionCtrl);
       selectCtrl.addOption(newHashKey, optionCtrl);
     }
 
     scope.$on('$destroy', function() {
-      selectCtrl.removeOption(latestHashKey, optionCtrl);
+      selectCtrl.removeOption(optionCtrl.hashKey, optionCtrl);
     });
   }
 
   function OptionController($scope, $element) {
-    this.ripple = $mdInkRipple.attachButtonBehavior($scope, $element);
-    this.element = $element;
     this.selected = false;
     this.setSelected = function(isSelected) {
       if (isSelected && !this.selected) {
-        this.element.attr('selected', 'selected');
+        $element.attr('selected', 'selected');
       } else if (!isSelected && this.selected) {
-        this.element.removeAttr('selected');
+        $element.removeAttr('selected');
       }
       this.selected = isSelected;
     };
@@ -287,7 +307,7 @@ function SelectProvider($$interimElementProvider) {
     });
 
   /* @ngInject */
-  function selectDefaultOptions($rootElement, $animate, $mdSelect, $mdConstant, $$rAF, $q, $timeout) {
+  function selectDefaultOptions($animate, $mdSelect, $mdConstant, $$rAF, $mdUtil, $mdTheming) {
     return {
       transformTemplate: transformTemplate,
       parent: getParent,
@@ -296,26 +316,25 @@ function SelectProvider($$interimElementProvider) {
       themable: true
     };
 
-    function getParent(scope, element, options) {
-      if (options.target) {
-        var contentParent = angular.element(options.target).controller('mdContent');
-        // If no contentParent is found, interimElement will do its default options.parent
-        return contentParent && contentParent.$element;
-      }
+    function transformTemplate(template) {
+      return '<div class="md-select-menu-container">' + template + '</div>';
     }
 
-    function transformTemplate(template) {
-      return '<div class="md-select-container">' + template + '</div>';
+    function getParent(scope, element, options) {
+      if (!options.target) return;
+      var contentParent = angular.element(options.target).controller('mdContent');
+      // If no return value, interimElement will use the default parent ($rootElement)
+      return contentParent && contentParent.$element;
     }
 
     function onShow(scope, element, options) {
-      var selectEl = element.find('md-select');
+      if (!options.target) throw new Error("We need a target, man.");
+      var targetEl = angular.element(options.target);
+      var selectEl = element.find('md-select-menu');
       var selectNode = selectEl[0];
 
-      if (!options.target) {
-        throw new Error("We need a target, man.");
-      }
       options.backdrop = angular.element('<md-backdrop>');
+      $mdTheming.inherit(options.backdrop, targetEl);
 
       options.parent.append(options.backdrop);
       options.parent.append(element);
@@ -324,14 +343,16 @@ function SelectProvider($$interimElementProvider) {
         scope.$apply($mdSelect.cancel); 
       });
       
-      // Give the select two frames to 'initialize' in the DOM, so we can read its
-      // height/width/position
+      // Give the select two frames to 'initialize' in the DOM, 
+      // so we can read its height/width/position
       $$rAF(function() {
         $$rAF(animateSelect);
       });
 
-      return transitionEndPromise(selectEl);
+      return $mdUtil.transitionEndPromise(selectEl);
       
+      // TODO make sure calculations work when there's fixed content at the top 
+      // (eg search bar) and a separate container for options
       function animateSelect() {
         var parentRect = options.parent[0].getBoundingClientRect();
         var maxWidth = parentRect.width - SELECT_EDGE_MARGIN * 2;
@@ -340,9 +361,9 @@ function SelectProvider($$interimElementProvider) {
           selectEl.css('max-width', maxWidth + 'px');
         }
 
-        var isOverflow = selectEl.hasClass('md-overflow');
+        var isScrollable = selectEl.hasClass('md-overflow');
         var selectRect = selectNode.getBoundingClientRect();
-        var targetRect = angular.element(options.target)[0].getBoundingClientRect();
+        var targetRect = targetEl[0].getBoundingClientRect();
         var selectedOption = selectNode.querySelector('md-option[selected]');
         var spaceAvailable = {
           top: targetRect.top - parentRect.top - SELECT_EDGE_MARGIN,
@@ -354,38 +375,45 @@ function SelectProvider($$interimElementProvider) {
         var top;
         var transformOrigin;
 
+        // If we have an md-option[selected], scroll to it and try use available space 
+        // to center it
         if (selectedOption) {
-          var selectedRect = {
+          var activeOptionRect = {
             left: selectedOption.offsetLeft,
             top: selectedOption.offsetTop,
             height: selectedOption.offsetHeight,
             width: selectedOption.offsetWidth
           };
 
-          if (isOverflow) {
+          if (isScrollable) {
             var buffer = selectRect.height / 2;
-            selectNode.scrollTop = selectedRect.top + selectedRect.height / 2 - buffer;
+            selectNode.scrollTop = activeOptionRect.top + activeOptionRect.height / 2 - buffer;
+
             if (spaceAvailable.top < buffer) {
               selectNode.scrollTop = Math.min(
-                selectedRect.top, 
+                activeOptionRect.top, 
                 selectNode.scrollTop + buffer - spaceAvailable.top 
               );
             } else if (spaceAvailable.bottom < buffer) {
               selectNode.scrollTop = Math.max(
-                selectedRect.top - selectRect.height + selectedRect.height,
+                activeOptionRect.top + activeOptionRect.height - selectRect.height,
                 selectNode.scrollTop - buffer + spaceAvailable.bottom
               );
             }
           }
 
-          left = targetRect.left + selectedRect.left;
-          top = targetRect.top + targetRect.height / 2 - selectedRect.height / 2 -
-              selectedRect.top + selectNode.scrollTop;
-          transformOrigin = (selectedRect.left + selectedRect.width / 2) + 'px ' +
-              (selectedRect.top + selectedRect.height / 2 - selectNode.scrollTop) + 'px';
+          left = targetRect.left + activeOptionRect.left;
+          top = targetRect.top + targetRect.height / 2 - activeOptionRect.height / 2 -
+              activeOptionRect.top + selectNode.scrollTop;
+          transformOrigin = (activeOptionRect.left + activeOptionRect.width / 2) + 'px ' +
+              (activeOptionRect.top + activeOptionRect.height / 2 - selectNode.scrollTop) + 'px';
+
+        // If nothing's selected, just center the select over the target
+        // and keep the select's scrollTop at 0
         } else {
-          var firstOption = selectNode.querySelector('md-option');
-          var optionRect = optionRect ? {
+          var optionNodes = selectNode.querySelectorAll('md-option');
+          var firstOption = optionNodes[0];
+          var optionRect = firstOption ? {
             left: firstOption.offsetLeft,
             top: firstOption.offsetTop,
             height: firstOption.offsetHeight,
@@ -393,7 +421,13 @@ function SelectProvider($$interimElementProvider) {
           } : { left: 0, top: 0, height: 0, width: 0 };
 
           left = targetRect.left + optionRect.left;
-          top = targetRect.top + optionRect.top;
+          top = targetRect.top + targetRect.height / 2 - optionRect.height / 2 - optionRect.top;
+
+          // Offset the select by the height of half of its options
+          if (firstOption) {
+            top -= optionRect.height * Math.floor(optionNodes.length / 2);
+          }
+          transformOrigin = '0 ' + selectRect.height / 2 + 'px';
         }
 
         // Make sure it's within the window
@@ -406,17 +440,15 @@ function SelectProvider($$interimElementProvider) {
           Math.max(top, SELECT_EDGE_MARGIN)
         );
 
-        options.scaleTransform = 'scale(' + 
-          Math.min(targetRect.width / selectRect.width, 1.0) + ',' +
-          Math.min(targetRect.height / selectRect.height, 1.0) + 
-        ')';
-        
         selectEl.css({
           left: left + 'px',
           top: top + 'px'
         });
-        selectEl.css($mdConstant.CSS.TRANSFORM, options.scaleTransform);
-        selectEl.css('transform-origin', transformOrigin);
+        selectEl.css($mdConstant.CSS.TRANSFORM, 'scale(' + 
+          Math.min(targetRect.width / selectRect.width, 1.0) + ',' +
+          Math.min(targetRect.height / selectRect.height, 1.0) + 
+        ')');
+        selectEl.css($mdConstant.CSS.TRANSFORM_ORIGIN, transformOrigin);
 
         $$rAF(function() {
           element.addClass('md-enter');
@@ -429,24 +461,20 @@ function SelectProvider($$interimElementProvider) {
     function onRemove(scope, element, options) {
       element.removeClass('md-enter').addClass('md-leave');
 
-      return transitionEndPromise(element).then(function() {
+      return $mdUtil.transitionEndPromise(element).then(function() {
         element.remove();
         options.backdrop.remove();
       });
     }
+  }
+}
 
-    function transitionEndPromise(element) {
-      var deferred = $q.defer();
-      element.on($mdConstant.CSS.TRANSITIONEND, finished);
-      function finished(ev) {
-        //Make sure this transitionend didn't bubble up from a child
-        if (ev.target === element[0]) {
-          element.off($mdConstant.CSS.TRANSITIONEND, finished);
-          deferred.resolve();
-        }
-      }
-      return deferred.promise;
-    }
+function filterParent(element, filterFn, limit) {
+  if (!limit) limit = 15;
+  var currentNode = element.hasOwnProperty(0) ? element[0] : element;
+  while (currentNode && limit--) {
+    if (filterFn(currentNode)) return currentNode;
+    currentNode = currentNode.parentNode;
   }
 }
 

@@ -1,23 +1,23 @@
 var TPL = [
-  '<md-select ng-model="choice">',
+  '<md-select-menu ng-model="choice">',
     '<md-option value="A">ABCDEFGHIJKLMNOPQRSTUIVWXYZ</md-option>',
     '<md-option value="B">B</md-option>',
     '<md-option value="C">C</md-option>',
     '<md-option value="D">D</md-option>',
-    // '<md-option value="E">E</md-option>',
+    '<md-option value="E">E</md-option>',
     // '<md-option value="F">F</md-option>',
     // '<md-option value="G">G</md-option>',
     // '<md-option value="H">H</md-option>',
     // '<md-option value="I">I</md-option>',
     // '<md-option value="J">H</md-option>',
     // '<md-option value="K">K</md-option>',
-  '</md-select>'
+  '</md-select-menu>'
 ].join('\n');
 
 angular.module('selectDemoBasic', ['ngMaterial'])
 
 .controller('AppCtrl', function($scope, $mdSelect) {
-  $scope.choice = "F";
+  $scope.choice = "B";
   $scope.openSelect = function($event) {
     $mdSelect.show({
       template: TPL,

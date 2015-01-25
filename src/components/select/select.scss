@@ -5,7 +5,11 @@ $select-container-transition-duration: 350ms;
 
 $select-max-visible-options: 5;
 
-.md-select-container {
+// The md-select in the developer's markup
+md-select {
+}
+
+.md-select-menu-container {
   position: absolute;
   left: 0;
   top: 0;
@@ -14,11 +18,11 @@ $select-max-visible-options: 5;
   opacity: 0;
   transform: translate3d(0,0,0);
 
-  // enter: md-select fades in, then options follow
+  // enter: md-select scales in, then options follow
   &.md-enter {
     opacity: 1;
 
-    md-select {
+    md-select-menu {
       transition: transform $swift-ease-out;
       transition-duration: 400ms;
       background: white;
@@ -31,14 +35,14 @@ $select-max-visible-options: 5;
     }
   }
 
-  // leave: the container fades out and moves up a tiny bit.
+  // leave: the container fades out and moves up a tiny bit
   &.md-leave {
     opacity: 0;
     transform: translate3d(0,-6px,0);
     transition: $swift-ease-in;
     transition-duration: 250ms;
 
-    md-select {
+    md-select-menu {
       background: white;
     }
     md-option {
@@ -47,7 +51,7 @@ $select-max-visible-options: 5;
   }
 }
 
-md-select {
+md-select-menu {
   @extend md-content;
   box-shadow: $whiteframe-shadow-z1;
 
@@ -68,6 +72,7 @@ md-select {
 }
 
 md-option {
+  cursor: pointer;
   position: relative;
   display: flex;
   align-items: center;
@@ -87,7 +92,4 @@ md-option {
   &[selected] {
     background: #f0f0f0;
   }
-}
-
-@keyframes optionFadeIn {
 }

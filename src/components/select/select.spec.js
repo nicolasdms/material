@@ -91,7 +91,7 @@ ddescribe('<md-select>', function() {
 
       it('uses track by if given to compare objects', inject(function($rootScope) {
         $rootScope.$apply('model = {id:2}');
-        var el = setup('ng-model="$root.model" ng-model-options="{trackBy: \'$model.id\'}"',
+        var el = setup('ng-model="$root.model" ng-model-options="{trackBy: \'$value.id\'}"',
             [{id:1}, {id:2}, {id:3}]);
 
         expect(selectedOptions(el).length).toBe(1);
@@ -302,7 +302,7 @@ ddescribe('<md-select>', function() {
 
       it('uses track by if given to compare objects', inject(function($rootScope) {
         $rootScope.$apply('model = [{id:2}]');
-        var el=setupMultiple('ng-model="$root.model" ng-model-options="{trackBy: \'$model.id\'}"',
+        var el=setupMultiple('ng-model="$root.model" ng-model-options="{trackBy: \'$value.id\'}"',
             [{id:1}, {id:2}, {id:3}]);
 
         expect(selectedOptions(el).length).toBe(1);

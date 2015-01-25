@@ -10,10 +10,12 @@
 var nextUniqueId = ['0','0','0'];
 
 angular.module('material.core')
-.factory('$mdUtil', function($cacheFactory, $document, $timeout) {
+.factory('$mdUtil', function($cacheFactory, $document, $timeout, $q, $mdConstant) {
   var Util;
   return Util = {
-    now: window.performance ? angular.bind(window.performance, window.performance.now) : Date.now,
+    now: window.performance ?
+      angular.bind(window.performance, window.performance.now) : 
+      Date.now,
 
     attachDragBehavior: attachDragBehavior,
 
@@ -29,6 +31,19 @@ angular.module('material.core')
         width: nodeRect.width,
         height: nodeRect.height
       };
+    },
+
+    transitionEndPromise: function(element) {
+      var deferred = $q.defer();
+      element.on($mdConstant.CSS.TRANSITIONEND, finished);
+      function finished(ev) {
+        //Make sure this transitionend didn't bubble up from a child
+        if (ev.target === element[0]) {
+          element.off($mdConstant.CSS.TRANSITIONEND, finished);
+          deferred.resolve();
+        }
+      }
+      return deferred.promise;
     },
 
     fakeNgModel: function() {
