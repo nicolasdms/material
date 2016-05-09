@@ -5,6 +5,7 @@
  * Initialization function that validates environment
  * requirements.
  */
+ 
 angular.module('material.core', ['material.core.theming'])
   .run(MdCoreInitialize)
   .config(MdCoreConfigure);
